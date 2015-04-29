@@ -2,8 +2,8 @@ package main
 
 import (
 	"devops-tools.pearson.com/mysp/cassandra-migrate/cql"
-	"flag"
 	"fmt"
+	"github.com/alecthomas/kingpin"
 	"github.com/gocql/gocql"
 	"os"
 	"sort"
@@ -11,68 +11,66 @@ import (
 )
 
 var (
-	dryRun   = true
-	confFile = "./conf/example.toml"
-	env      = "local"
+	app = kingpin.New("cassandra-migration", "Migrations tool for cassandra")
+
+    // Main flags which must be provided before the commands below.
+	dryRun   = app.Flag("dryrun", "Dry run").Short('d').Bool()
+	confPath = app.Flag("conf", "Path to config file.").Short('c').Default("./conf/example.toml").String()
+	env      = app.Flag("env", "Set config environment.").Short('e').Default("local").String()
+
+    // The main commands.
+    cmdCreate     = app.Command("create", "Create new migration.")
+    cmdLog   = app.Command("log", "List all applied migrations")
+    cmdUp = app.Command("up", "Apply a first new migration.")
+
+    // Options to the 'create' command.
+	migrationName = cmdCreate.Arg("name", "Name of new migration.").Required().String()
+    migrationEnv  = cmdCreate.Flag("target-env", "Name of new migration.").Short('t').Default("all").String()
+
+	command = kingpin.MustParse(app.Parse(os.Args[1:]))
 )
 
-func init() {
-	flag.StringVar(&confFile, "conf", confFile, "Configuration file path")
-	flag.BoolVar(&dryRun, "dryrun", dryRun, "Dry Run")
-	flag.StringVar(&env, "env", env, "Environment against which to run migrations")
-}
+var (
+	conf *cql.MigrationConfig
+)
 
 func main() {
-	flag.Parse()
+    // Load dat config.
+    conf = mustLoadConfig()
 
-    action := ""
-	args := flag.Args()
-	if len(args) > 0 {
-		action = args[0]
-	}
+    // TODO: We're not currently guarding against any sort of odd environment names here or in the config. Should we?
+    //       At some point the user has to take responsibility for their own choices, right?
+    //env = strings.ToLower(*env)
+    fmt.Printf("Environment: %s\n", *env)
+    fmt.Printf("Cassandra Seed Node: %s\n", conf.Environments[*env].CassandraHosts)
+    fmt.Printf("Migration Scripts Path: %s\n", conf.Scripts.Path)
+    fmt.Printf("DRY RUN?: %v\n", *dryRun)
 
-	conf, confErr := cql.NewMigrationConfig(confFile)
-	if confErr != nil {
-		fail("Failed to read configuration file: '%s'", confFile)
-	}
+	switch command {
 
-	// TODO: We're not currently guarding against any sort of odd environment names here or in the config. Should we?
-	//       At some point the user has to take responsibility for their own choices, right?
-	//env = strings.ToLower(env)
+    case cmdLog.FullCommand():
+        listLog(conf, *env)
 
-	fmt.Printf("Environment: %s\n", env)
-	fmt.Printf("Cassandra Seed Node: %s\n", conf.Environments[env].CassandraHosts)
-	fmt.Printf("Migration Scripts Path: %s\n", conf.Scripts.Path)
-    fmt.Printf("DRY RUN?: %v\n", dryRun)
+	case cmdUp.FullCommand():
+		fmt.Printf("Migrate up\n")
+        up(*dryRun, conf, *env)
 
-	switch action {
-	case "log":
-		listLog(conf, env)
-
-	case "up":
-		fmt.Printf("Migrate %s...\n", action)
-		up(dryRun, conf, env)
-
-	case "create":
-		if len(args) < 2 {
-			fail("Migrate %s \"Missing migration name\"", action)
-		}
-
-		var createErr error
-		if len(args) > 2 {
-			createErr = create(conf, args[1], args[2])
-		} else {
-			createErr = create(conf, args[1], "")
-		}
-		if createErr != nil {
-			fail("Unable to create migration file", createErr)
-		}
+	case cmdCreate.FullCommand():
+        if createErr:= create(conf, *migrationName, *migrationEnv); createErr != nil {
+            fail("Unable to create migration file", createErr)
+        }
 
 	default:
-		fmt.Printf("Unknown command \"%s\"\n", action)
-		flag.Usage()
-		os.Exit(1)
+		app.Usage(os.Stdout)
 	}
+}
+
+func mustLoadConfig() *cql.MigrationConfig {
+    conf, confErr := cql.NewMigrationConfig(*confPath)
+    if confErr != nil {
+        fail("Failed to read configuration file: '%s'", *confPath)
+    }
+    return conf
 }
 
 func fail(msg string, args ...interface{}) {
@@ -82,16 +80,16 @@ func fail(msg string, args ...interface{}) {
 
 // TODO: Need to figure out whether we need to provide a cluster or whether one of the 'seeds' is ok.
 func initDB(h, k string) (*gocql.Session, error) {
-    fmt.Printf("Connecting to %s/%s\n", h, k)
-    cluster := gocql.NewCluster(h)
-    cluster.Keyspace = k
-    cluster.Consistency = gocql.Quorum
-    cluster.ConnPoolType = gocql.NewSimplePool
-    return cluster.CreateSession()
+	fmt.Printf("Connecting to %s/%s\n", h, k)
+	cluster := gocql.NewCluster(h)
+	cluster.Keyspace = k
+	cluster.Consistency = gocql.Quorum
+	cluster.ConnPoolType = gocql.NewSimplePool
+	return cluster.CreateSession()
 }
 
 func initSchemaVersion(session *gocql.Session) error {
-    schemaVerCQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS schema_version(
+	schemaVerCQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS schema_version(
                     applied timestamp,
                     environment text,
                     name text,
@@ -100,8 +98,8 @@ func initSchemaVersion(session *gocql.Session) error {
                     version text,
                     PRIMARY KEY (name, version)) WITH CLUSTERING ORDER BY (version ASC)`)
 
-    iter := session.Query(schemaVerCQL).Iter()
-    return iter.Close()
+	iter := session.Query(schemaVerCQL).Iter()
+	return iter.Close()
 }
 
 //
@@ -204,11 +202,16 @@ func up(dryRun bool, conf *cql.MigrationConfig, env string) {
 
 	// Run each update if:
 	//   1. It is not detected in the 'applied' list from above.
-	//   2. The dry run flag was not set.
+    //   2. The environment of the migration is not either 'all' or the same as the env flag.
+	//   3. The dry run flag was not set.
 	for _, m := range updates {
 		if applied.Contains(m) {
-			fmt.Printf("x: '%s'\n", m.File)
+			fmt.Printf("Ignoring: '%s' (already applied)\n", m.File)
 		} else {
+            if m.Environment != "all" && m.Environment != env {
+                fmt.Printf("Ignoring: '%s' (because environment is '%s')\n", m.File, m.Environment)
+                continue
+            }
 			if !dryRun {
 				if err := applyUpdate(m, m.File, session); err != nil {
 					fail(err.Error())
