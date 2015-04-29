@@ -7,7 +7,6 @@ import (
 	"github.com/gocql/gocql"
 	"os"
 	"sort"
-	"strings"
 )
 
 var (
@@ -73,19 +72,28 @@ func mustLoadConfig() *cql.MigrationConfig {
 	return conf
 }
 
+// TODO: Need to figure out whether we need to provide a cluster or whether one of the 'seeds' is ok.
+// TODO: Quorum or LocalQuorum? That is the question.
+func mustConnectToDB(conf *cql.MigrationConfig, env string) *gocql.Session {
+	hosts := conf.Environments[env].CassandraHosts
+	ks := conf.Environments[env].Keyspace
+
+	fmt.Printf("Connecting to %s/%s\n", hosts, ks)
+	cluster := gocql.NewCluster(hosts)
+	cluster.Keyspace = ks
+	cluster.Consistency = gocql.Quorum
+	cluster.ConnPoolType = gocql.NewSimplePool
+
+	session, err := cluster.CreateSession()
+	if err != nil {
+		fail("Failed to connect: %s - %q", hosts, err)
+	}
+	return session
+}
+
 func fail(msg string, args ...interface{}) {
 	fmt.Printf(msg+"\n", args...)
 	os.Exit(1)
-}
-
-// TODO: Need to figure out whether we need to provide a cluster or whether one of the 'seeds' is ok.
-func initDB(h, k string) (*gocql.Session, error) {
-	fmt.Printf("Connecting to %s/%s\n", h, k)
-	cluster := gocql.NewCluster(h)
-	cluster.Keyspace = k
-	cluster.Consistency = gocql.Quorum
-	cluster.ConnPoolType = gocql.NewSimplePool
-	return cluster.CreateSession()
 }
 
 func initSchemaVersion(session *gocql.Session) error {
@@ -103,50 +111,10 @@ func initSchemaVersion(session *gocql.Session) error {
 }
 
 //
-// Actually apply the CQL statements to the DB. TODO: Actually apply the CQL statements to the DB ;)
-//
-func applyUpdate(migration *cql.Migration, filename string, session *gocql.Session) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	fmt.Printf("Applying migration: %s\n   |%-40s|%-15s|%-12s|%-40x|\n",
-		migration.File,
-		migration.Name,
-		migration.Environment,
-		migration.Version,
-		migration.Sum)
-
-	statements, err := cql.ReadCQLFile(f)
-	if err != nil {
-		return err
-	}
-
-	for _, statement := range statements {
-		statement = strings.TrimSpace(statement)
-		if len(statement) > 0 {
-			//fmt.Printf("Applying %d: %s \n", i, statement)
-		}
-	}
-	if saveErr := migration.Save(session); saveErr != nil {
-		return saveErr
-	}
-	return nil
-}
-
-//
 // Just spit out the content of the schema_version table for all to see.
 //
 func listLog(conf *cql.MigrationConfig, env string) {
-	hosts := conf.Environments[env].CassandraHosts
-	keyspace := conf.Environments[env].Keyspace
-
-	session, err := initDB(hosts, keyspace)
-	if err != nil {
-		fail("Failed to connect: %s - %q", hosts, err)
-	}
+	session := mustConnectToDB(conf, env)
 	defer session.Close()
 
 	applied := cql.ListAppliedMigrations(session)
@@ -173,19 +141,13 @@ func create(conf *cql.MigrationConfig, name string, env string) error {
 // Migrate up. We don't do down yet. Need to do a better job of parsing the CQL to do that, I think.
 //
 func up(dryRun bool, conf *cql.MigrationConfig, env string) {
-	hosts := conf.Environments[env].CassandraHosts
-	keyspace := conf.Environments[env].Keyspace
-
-	session, err := initDB(hosts, keyspace)
-	if err != nil {
-		fail("Failed to connect: %s - %q", hosts, err)
-	}
+	session := mustConnectToDB(conf, env)
 	defer session.Close()
 
 	if !dryRun {
-		err = initSchemaVersion(session)
-		if err != nil {
-			fail("Failed to init schema: %q", err)
+		initErr := initSchemaVersion(session)
+		if initErr != nil {
+			fail("Failed to init schema: %q", initErr)
 		}
 	}
 	// Retrieve all the previously applied updates from the DB.
@@ -194,10 +156,10 @@ func up(dryRun bool, conf *cql.MigrationConfig, env string) {
 	// Create Migration objects from each candidate file in the specified scripts path.
 	updates, listErr := cql.ListMigrationFiles(conf.Scripts.Path)
 	if listErr != nil {
-		fail("Failed to list migration files", err.Error())
+		fail("Failed to list migration files: %q", listErr)
 	}
 
-	// Ensure the files are in version order
+	// Ensure the files are in version order so they're applied in order.
 	sort.Sort(updates)
 
 	// Run each update if:
@@ -213,8 +175,11 @@ func up(dryRun bool, conf *cql.MigrationConfig, env string) {
 				continue
 			}
 			if !dryRun {
-				if err := applyUpdate(m, m.File, session); err != nil {
-					fail(err.Error())
+				if err := m.Apply(session); err != nil {
+					fail("Unable to apply migration '%s':\n   %s", m.Name, err.Error())
+				}
+				if err := m.Save(session); err != nil {
+					fail("Unable to save migration '%s':\n   %s", m.Name, err.Error())
 				}
 			}
 		}

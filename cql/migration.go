@@ -157,18 +157,60 @@ func (m *Migration) CreateMigrationFile(dirPath string) error {
 }
 
 //
+// Apply the CQL statements in the Migration file to the db specified by 'session'.
+// Will attempt to apply all the statements and return a list of errors at the end.
+// TODO: Is that actually a good idea!?
+//
+func (m *Migration) Apply(session *gocql.Session) (errs Errors) {
+	f, fopenErr := os.Open(m.File)
+	if fopenErr != nil {
+		errs = append(errs, fopenErr)
+		return errs
+	}
+	defer f.Close()
+
+	fmt.Printf("Applying migration: %s\n   |%-40s|%-15s|%-12s|%-40x|\n",
+		m.File,
+		m.Name,
+		m.Environment,
+		m.Version,
+		m.Sum)
+
+	statements, readErr := ReadCQLFile(f)
+	if readErr != nil {
+		errs = append(errs, readErr)
+		return errs
+	}
+
+	for _, st := range statements {
+		st = strings.TrimSpace(st)
+		if "" == st {
+			continue
+		}
+		query := session.Query(st)
+		if execErr := query.Exec(); nil != execErr {
+			errs = append(errs, execErr)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
+}
+
+//
 // Insert a record into the schema_version table for this Migration object.
 //
 func (m *Migration) Save(session *gocql.Session) error {
 	saveCql := fmt.Sprintf(`
-		INSERT INTO schema_version (
-		            applied,
-                    environment,
-                    checksum,
-                    name,
-                    user,
-                    version)
-		    VALUES( ?, ?, ?, ?, ?, ? )`)
+			INSERT INTO schema_version (
+			            applied,
+	                    environment,
+	                    checksum,
+	                    name,
+	                    user,
+	                    version)
+			    VALUES( ?, ?, ?, ?, ?, ? )`)
 
 	saveQuery := session.Query(saveCql, time.Now(), m.Environment, m.Sum, m.Name, m.User, m.Version)
 	if queryErr := saveQuery.Exec(); nil != queryErr {
