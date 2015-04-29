@@ -13,19 +13,19 @@ import (
 var (
 	app = kingpin.New("cassandra-migration", "Migrations tool for cassandra")
 
-    // Main flags which must be provided before the commands below.
+	// Main flags which must be provided before the commands below.
 	dryRun   = app.Flag("dryrun", "Dry run").Short('d').Bool()
 	confPath = app.Flag("conf", "Path to config file.").Short('c').Default("./conf/example.toml").String()
 	env      = app.Flag("env", "Set config environment.").Short('e').Default("local").String()
 
-    // The main commands.
-    cmdCreate     = app.Command("create", "Create new migration.")
-    cmdLog   = app.Command("log", "List all applied migrations")
-    cmdUp = app.Command("up", "Apply a first new migration.")
+	// The main commands.
+	cmdCreate = app.Command("create", "Create new migration.")
+	cmdLog    = app.Command("log", "List all applied migrations")
+	cmdUp     = app.Command("up", "Apply a first new migration.")
 
-    // Options to the 'create' command.
+	// Options to the 'create' command.
 	migrationName = cmdCreate.Arg("name", "Name of new migration.").Required().String()
-    migrationEnv  = cmdCreate.Flag("target-env", "Name of new migration.").Short('t').Default("all").String()
+	migrationEnv  = cmdCreate.Flag("target-env", "Name of new migration.").Short('t').Default("all").String()
 
 	command = kingpin.MustParse(app.Parse(os.Args[1:]))
 )
@@ -35,30 +35,30 @@ var (
 )
 
 func main() {
-    // Load dat config.
-    conf = mustLoadConfig()
+	// Load dat config.
+	conf = mustLoadConfig()
 
-    // TODO: We're not currently guarding against any sort of odd environment names here or in the config. Should we?
-    //       At some point the user has to take responsibility for their own choices, right?
-    //env = strings.ToLower(*env)
-    fmt.Printf("Environment: %s\n", *env)
-    fmt.Printf("Cassandra Seed Node: %s\n", conf.Environments[*env].CassandraHosts)
-    fmt.Printf("Migration Scripts Path: %s\n", conf.Scripts.Path)
-    fmt.Printf("DRY RUN?: %v\n", *dryRun)
+	// TODO: We're not currently guarding against any sort of odd environment names here or in the config. Should we?
+	//       At some point the user has to take responsibility for their own choices, right?
+	//env = strings.ToLower(*env)
+	fmt.Printf("Environment: %s\n", *env)
+	fmt.Printf("Cassandra Seed Node: %s\n", conf.Environments[*env].CassandraHosts)
+	fmt.Printf("Migration Scripts Path: %s\n", conf.Scripts.Path)
+	fmt.Printf("DRY RUN?: %v\n", *dryRun)
 
 	switch command {
 
-    case cmdLog.FullCommand():
-        listLog(conf, *env)
+	case cmdLog.FullCommand():
+		listLog(conf, *env)
 
 	case cmdUp.FullCommand():
 		fmt.Printf("Migrate up\n")
-        up(*dryRun, conf, *env)
+		up(*dryRun, conf, *env)
 
 	case cmdCreate.FullCommand():
-        if createErr:= create(conf, *migrationName, *migrationEnv); createErr != nil {
-            fail("Unable to create migration file", createErr)
-        }
+		if createErr := create(conf, *migrationName, *migrationEnv); createErr != nil {
+			fail("Unable to create migration file", createErr)
+		}
 
 	default:
 		app.Usage(os.Stdout)
@@ -66,11 +66,11 @@ func main() {
 }
 
 func mustLoadConfig() *cql.MigrationConfig {
-    conf, confErr := cql.NewMigrationConfig(*confPath)
-    if confErr != nil {
-        fail("Failed to read configuration file: '%s'", *confPath)
-    }
-    return conf
+	conf, confErr := cql.NewMigrationConfig(*confPath)
+	if confErr != nil {
+		fail("Failed to read configuration file: '%s'", *confPath)
+	}
+	return conf
 }
 
 func fail(msg string, args ...interface{}) {
@@ -202,16 +202,16 @@ func up(dryRun bool, conf *cql.MigrationConfig, env string) {
 
 	// Run each update if:
 	//   1. It is not detected in the 'applied' list from above.
-    //   2. The environment of the migration is not either 'all' or the same as the env flag.
+	//   2. The environment of the migration is not either 'all' or the same as the env flag.
 	//   3. The dry run flag was not set.
 	for _, m := range updates {
 		if applied.Contains(m) {
 			fmt.Printf("Ignoring: '%s' (already applied)\n", m.File)
 		} else {
-            if m.Environment != "all" && m.Environment != env {
-                fmt.Printf("Ignoring: '%s' (because environment is '%s')\n", m.File, m.Environment)
-                continue
-            }
+			if m.Environment != "all" && m.Environment != env {
+				fmt.Printf("Ignoring: '%s' (because environment is '%s')\n", m.File, m.Environment)
+				continue
+			}
 			if !dryRun {
 				if err := applyUpdate(m, m.File, session); err != nil {
 					fail(err.Error())
