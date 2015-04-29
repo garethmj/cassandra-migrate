@@ -14,7 +14,13 @@ ifeq (migrate,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:) # ...and turn them into do-nothing targets
 endif
 
-all: test;
+all: test build;
+
+build:
+	@go build $(GOFLAGS) -o build/migrate cmd/migrate/main.go
+
+clean:
+	@rm -rf build
 
 test: $(SRC)
 	@go test $(TESTS) $(ARGS)
