@@ -1,0 +1,107 @@
+// [portal] "Init DB" by Markus Kobler
+
+// INSERT INTO schema_version (component, component_order, applied) VALUES ("portal", 1408211809, dateof(now())) IF NOT EXISTS;
+
+/*
+*
+* Multi line comment of doom
+*/
+
+-- And some SQL style comments
+--
+
+CREATE TABLE IF NOT EXISTS user (
+  id uuid,
+  name text,
+  email text,
+  teams map<uuid,text>,
+  PRIMARY KEY (id)
+);
+
+-- More SQL style comment
+CREATE TABLE IF NOT EXISTS user_email (
+  email text,
+  user uuid,
+  PRIMARY KEY (email)
+);
+
+CREATE TABLE IF NOT EXISTS team (
+  id uuid,
+  name text,
+  members map<uuid,text>,
+  bubbles set<uuid>,
+  ips     map<inet,text>,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS team_name (
+  name text,
+  team uuid,
+  PRIMARY KEY (name)
+);
+
+CREATE TABLE IF NOT EXISTS notfication (
+  recipient uuid,
+  id uuid,
+  action uuid,
+  type text,
+  event text,
+  acknowledged boolean,
+  PRIMARY KEY (recipient, action, id)
+) WITH CLUSTERING ORDER BY (action DESC, id DESC);
+CREATE INDEX IF NOT EXISTS notfication_acknowledged ON notfication(acknowledged);
+
+CREATE TABLE IF NOT EXISTS bubble (
+  team uuid,
+  id uuid,
+  name text,
+  region text,
+  ips set<inet>,
+  network uuid,
+  // status ?
+  org_id uuid,
+  org_users map<uuid,uuid>,
+  org_vdc uuid,
+  org_edge uuid,
+  org_networks map<text,uuid>,
+  PRIMARY KEY (team, id)
+) WITH CLUSTERING ORDER BY (id DESC);
+CREATE INDEX IF NOT EXISTS bubble_region ON bubble(region);
+
+CREATE TABLE IF NOT EXISTS bubble_name (
+  region text,
+  name text,
+  team uuid,
+  bubble uuid,
+  PRIMARY KEY (region, name)
+);
+
+CREATE TABLE IF NOT EXISTS public_ip (
+  region  text,
+  address inet,
+  netmask inet,
+  team uuid,
+  bubble uuid,
+  reserved boolean,
+  PRIMARY KEY (region, address)
+) WITH CLUSTERING ORDER BY (address DESC);
+CREATE INDEX IF NOT EXISTS public_ip_reserved ON public_ip(reserved);
+
+CREATE TABLE IF NOT EXISTS network (
+  id uuid,
+  bubble uuid,
+  region text,
+  networks map<text,text>,
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS network_region ON network(region);
+
+// BEGIN BATCH
+//   INSERT INTO user_email(email,id) VALUES ('markus.kobler@pearson.com', 2f5dd8ee-295e-11e4-91c8-b8e856309420) IF NOT EXISTS
+//   INSERT INTO user(id,name,email) VALUES (2f5dd8ee-295e-11e4-91c8-b8e856309420, 'Markus Kobler', 'markus.kobler@pearson.com')
+// APPLY BATCH;
+
+// BEGIN BATCH
+//   INSERT INTO team_name(name,id) VALUES ('portal-(dev-team)',ec3d1013-2968-11e4-bef4-b8e856309420) IF NOT EXISTS
+//   INSERT INTO team(id,name) VALUES (ec3d1013-2968-11e4-bef4-b8e856309420, 'Portal (Dev team)')
+// APPLY BATCH;

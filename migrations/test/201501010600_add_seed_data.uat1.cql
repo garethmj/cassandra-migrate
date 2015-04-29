@@ -1,0 +1,2 @@
+INSERT INTO network (id, region, networks, status) VALUES (uuid(), 'LO3',{'FE':'10.72.205.0/27','BE':'10.76.205.0/27','EGW_GW':'159.182.42.1','EGW_IP':'159.182.42.76','EGW_MASK':'255.255.255.0'}, 0);
+INSERT INTO network (id, region, networks, status) VALUES (uuid(), 'LO3',{'FE':'10.72.205.32/27','BE':'10.76.205.32/27','EGW_GW':'159.182.42.1','EGW_IP':'159.182.42.69','EGW_MASK':'255.255.255.0'}, 0);

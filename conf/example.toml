@@ -1,0 +1,11 @@
+[scripts]
+    path = "./migrations/test"
+
+[environments]
+    [environments.local]
+    cassandrahosts = "192.168.56.10"
+    keyspace       = "mystack"
+
+    [environments.uat1]
+    cassandrahosts = "10.10.10.10"
+    keyspace       = "mystack"
