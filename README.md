@@ -19,3 +19,6 @@ Things I'd like to add:
 * A proper CQL lexer and parser. I can't find one in Go so I guess I'd have to write one? This would really help in a number of ways.
 * Migrate down. At the moment we only go forwards. Very progressive. But not always what you want.
 * In-file meta-data. Something that a parser would be really helpful for. But being able to add meaningful annotation to a CQL file would be ace.
+* Validate checksums: We sha1sum all the files and add that info to the schema_version table but never audit it.
+* Stop fmt.Printf'ing and use a logger instead.
+* Manage dependencies.
