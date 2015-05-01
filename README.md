@@ -12,6 +12,19 @@ fit our specific use case but might not be what others are looking for.
 
 I'll try to make the tool better and more generic in coming weeks.
 
+### Building
+
+Cassandra Migrate uses [godep](https://github.com/tools/godep) so you need to do the following to build:
+
+```go get github.com/tools/godep```
+
+Then you either need to use make (the Makefile sets up GOPATH for you) or you need to ensure that you set your GOPATH
+correctly yourself:
+
+```export GOPATH=$(godep path):$GOPATH```
+
+Clearly godep should already be in your PATH for this to work.
+
 ## Road Map
 
 Things I'd like to add:
@@ -21,4 +34,5 @@ Things I'd like to add:
 * In-file meta-data. Something that a parser would be really helpful for. But being able to add meaningful annotation to a CQL file would be ace.
 * Validate checksums: We sha1sum all the files and add that info to the schema_version table but never audit it.
 * Stop fmt.Printf'ing and use a logger instead.
-* Manage dependencies.
+~~* Manage dependencies.~~
+

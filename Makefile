@@ -14,9 +14,14 @@ ifeq (migrate,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:) # ...and turn them into do-nothing targets
 endif
 
+# Prefix the user's GOPATH with our godep path. I don't want to totally blast the user's GOPATH here.
+# TODO: Is it worth ensuring that godep is installed here?
+export GOPATH := $(shell godep path):$(GOPATH)
+
 all: test build;
 
 build:
+	@echo 'Building with GOPATH: $(GOPATH)'
 	@go build $(GOFLAGS) -o build/migrate cmd/migrate/main.go
 
 clean:
