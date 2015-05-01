@@ -35,4 +35,5 @@ Things I'd like to add:
 * Validate checksums: We sha1sum all the files and add that info to the schema_version table but never audit it.
 * Stop fmt.Printf'ing and use a logger instead.
 ~~* Manage dependencies.~~
+* Log output doesn't come out in executed order.
 

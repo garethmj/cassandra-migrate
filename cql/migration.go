@@ -55,7 +55,7 @@ func MigrationFromFile(path string) (migration *Migration, err error) {
 	}
 
 	filename := filepath.Base(path)
-	re := regexp.MustCompile("(\\d{12})_(\\w+)\\.(\\w+)\\.cql")
+	re := regexp.MustCompile("(\\d{12})[_.]([A-Za-z0-9_-]+)\\.([A-Za-z0-9_-]+)\\.cql")
 
 	cksum := sha1.New()
 	cksum.Write(fbytes)
@@ -100,7 +100,7 @@ func ListMigrationFiles(path string) (updates Migrations, errs Errors) {
 			if m, err := MigrationFromFile(fpath); err == nil {
 				updates = append(updates, m)
 			} else {
-				errs = append(errs, fmt.Errorf("Failed to create migration from file: '%s'", fpath))
+				errs = append(errs, fmt.Errorf("Failed to create migration from file: '%s': %s", fpath, err.Error()))
 			}
 		}
 	}

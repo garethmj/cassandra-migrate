@@ -19,7 +19,8 @@ var (
 
 	// The main commands.
 	cmdCreate = app.Command("create", "Create new migration.")
-	cmdLog    = app.Command("log", "List all applied migrations")
+	cmdList   = app.Command("list", "List all candidate migrations.")
+    cmdLog    = app.Command("log", "List all applied migrations.")
 	cmdUp     = app.Command("up", "Apply a first new migration.")
 
 	// Options to the 'create' command.
@@ -46,6 +47,9 @@ func main() {
 	fmt.Printf("DRY RUN?: %v\n", *dryRun)
 
 	switch command {
+
+    case cmdList.FullCommand():
+        listCandidates(conf, *env)
 
 	case cmdLog.FullCommand():
 		listLog(conf, *env)
@@ -119,10 +123,39 @@ func listLog(conf *cql.MigrationConfig, env string) {
 
 	applied := cql.ListAppliedMigrations(session)
 	fmt.Println("Previously Applied Migrations:")
-	fmt.Printf("    |%-40s|%-20s|%-15s|%-20s|%-20s|\n", "Name", "Version", "Environment", "Applied By", "Applied On")
+	fmt.Printf("    |%-40s|%-20s|%-15s|%-20s|%-20s\n", "Name", "Version", "Environment", "Applied By", "Applied On")
 	for _, a := range applied {
-		fmt.Printf("    |%-40s|%-20s|%-15s|%-20s|%-20s|\n", a.Name, a.Version, a.Environment, a.User, a.Applied)
+		fmt.Printf("    |%-40s|%-20s|%-15s|%-20s|%-20s\n", a.Name, a.Version, a.Environment, a.User, a.Applied)
 	}
+}
+
+//
+// TODO: Err....so there's a lot of copy paste here from the up() fn.
+//
+func listCandidates(conf *cql.MigrationConfig, env string) {
+    session := mustConnectToDB(conf, env)
+    defer session.Close()
+
+    applied := cql.ListAppliedMigrations(session)
+
+    updates, listErr := cql.ListMigrationFiles(conf.Scripts.Path)
+    if listErr != nil {
+        fail("Failed to list migration files: %s", listErr.Error())
+    }
+
+    fmt.Println("Migration Candidates:")
+    fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", "Migration Name", "Version", "Environment", "Candidate?", "File Path")
+
+    for _, m := range updates {
+        isCandidate := "yes"
+        if m.Environment != "all" && m.Environment != env { isCandidate = "no" }
+
+        if applied.Contains(m) {
+            fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
+        } else {
+            fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
+        }
+    }
 }
 
 //
