@@ -20,12 +20,15 @@ var (
 	// The main commands.
 	cmdCreate = app.Command("create", "Create new migration.")
 	cmdList   = app.Command("list", "List all candidate migrations.")
-    cmdLog    = app.Command("log", "List all applied migrations.")
+	cmdLog    = app.Command("log", "List all applied migrations.")
 	cmdUp     = app.Command("up", "Apply a first new migration.")
 
 	// Options to the 'create' command.
 	migrationName = cmdCreate.Arg("name", "Name of new migration.").Required().String()
 	migrationEnv  = cmdCreate.Flag("target-env", "Name of new migration.").Short('t').Default("all").String()
+
+	// Options to the 'up' command.
+	upLimit = cmdUp.Flag("limit", "Limit migrate up to a maximum version.").String()
 
 	command = kingpin.MustParse(app.Parse(os.Args[1:]))
 )
@@ -48,15 +51,15 @@ func main() {
 
 	switch command {
 
-    case cmdList.FullCommand():
-        listCandidates(conf, *env)
+	case cmdList.FullCommand():
+		listCandidates(conf, *env)
 
 	case cmdLog.FullCommand():
 		listLog(conf, *env)
 
 	case cmdUp.FullCommand():
 		fmt.Printf("Migrate up\n")
-		up(*dryRun, conf, *env)
+		up(*dryRun, *upLimit, conf, *env)
 
 	case cmdCreate.FullCommand():
 		if createErr := create(conf, *migrationName, *migrationEnv); createErr != nil {
@@ -133,29 +136,31 @@ func listLog(conf *cql.MigrationConfig, env string) {
 // TODO: Err....so there's a lot of copy paste here from the up() fn.
 //
 func listCandidates(conf *cql.MigrationConfig, env string) {
-    session := mustConnectToDB(conf, env)
-    defer session.Close()
+	session := mustConnectToDB(conf, env)
+	defer session.Close()
 
-    applied := cql.ListAppliedMigrations(session)
+	applied := cql.ListAppliedMigrations(session)
 
-    updates, listErr := cql.ListMigrationFiles(conf.Scripts.Path)
-    if listErr != nil {
-        fail("Failed to list migration files: %s", listErr.Error())
-    }
+	updates, listErr := cql.ListMigrationFiles(conf.Scripts.Path)
+	if listErr != nil {
+		fail("Failed to list migration files: %s", listErr.Error())
+	}
 
-    fmt.Println("Migration Candidates:")
-    fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", "Migration Name", "Version", "Environment", "Candidate?", "File Path")
+	fmt.Println("Migration Candidates:")
+	fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", "Migration Name", "Version", "Environment", "Candidate?", "File Path")
 
-    for _, m := range updates {
-        isCandidate := "yes"
-        if m.Environment != "all" && m.Environment != env { isCandidate = "no" }
+	for _, m := range updates {
+		isCandidate := "yes"
+		if m.Environment != "all" && m.Environment != env {
+			isCandidate = "no"
+		}
 
-        if applied.Contains(m) {
-            fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
-        } else {
-            fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
-        }
-    }
+		if applied.Contains(m) {
+			fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
+		} else {
+			fmt.Printf("    |%-40s|%-20s|%-15s|%-11s|%-50s\n", m.Name, m.Version, m.Environment, isCandidate, m.File)
+		}
+	}
 }
 
 //
@@ -173,7 +178,7 @@ func create(conf *cql.MigrationConfig, name string, env string) error {
 //
 // Migrate up. We don't do down yet. Need to do a better job of parsing the CQL to do that, I think.
 //
-func up(dryRun bool, conf *cql.MigrationConfig, env string) {
+func up(dryRun bool, limit string, conf *cql.MigrationConfig, env string) {
 	session := mustConnectToDB(conf, env)
 	defer session.Close()
 
@@ -205,6 +210,10 @@ func up(dryRun bool, conf *cql.MigrationConfig, env string) {
 		} else {
 			if m.Environment != "all" && m.Environment != env {
 				fmt.Printf("Ignoring: '%s' (because environment is '%s')\n", m.File, m.Environment)
+				continue
+			}
+			if m.Version > limit {
+				fmt.Printf("Ignoring: '%s' (because is's version is > '%s')\n", m.File, limit)
 				continue
 			}
 			if !dryRun {
