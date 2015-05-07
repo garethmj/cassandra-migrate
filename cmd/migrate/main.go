@@ -44,6 +44,9 @@ func main() {
 	// TODO: We're not currently guarding against any sort of odd environment names here or in the config. Should we?
 	//       At some point the user has to take responsibility for their own choices, right?
 	//env = strings.ToLower(*env)
+    if _, ok := conf.Environments[*env]; !ok {
+        fail("Configuration '%s' does not contain environment '%s'", *confPath, *env)
+    }
 	fmt.Printf("Environment: %s\n", *env)
 	fmt.Printf("Cassandra Seed Node: %s\n", conf.Environments[*env].CassandraHosts)
 	fmt.Printf("Migration Scripts Path: %s\n", conf.Scripts.Path)
@@ -212,7 +215,7 @@ func up(dryRun bool, limit string, conf *cql.MigrationConfig, env string) {
 				fmt.Printf("Ignoring: '%s' (because environment is '%s')\n", m.File, m.Environment)
 				continue
 			}
-			if m.Version > limit {
+			if len(limit) > 0 && m.Version > limit {
 				fmt.Printf("Ignoring: '%s' (because is's version is > '%s')\n", m.File, limit)
 				continue
 			}
